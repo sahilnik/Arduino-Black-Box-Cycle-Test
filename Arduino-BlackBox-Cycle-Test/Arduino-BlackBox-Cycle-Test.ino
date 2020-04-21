@@ -31,12 +31,22 @@ const int motorinputdown = 9;
 
 volatile static int buttonpressed;
 volatile static int cyclephase = 0;
+volatile static int liftmode = 0;   // 0 = Manual, 1 = Auto (cycle test), 2 = Program Mode
+volatile static int liftmodeprev = 0;
+volatile static int32_t timecount = 0;
+
+const int uptime = 2;
+const int downtime = 2;
+const int chargetime = 2;
+const int restuptime = 2;
+const int restdowntime = 2;
+
+volatile static int modedebounce = 0;
+  volatile static int debouncelimit = 60;
 
 void setup() {
 
   oled.begin();
-//  initTIM1interrupt();
-//  initTIM0interrupt();
   initTIMinterrupts();
   pinmodesetup();
   oled.selectFont(Droid_Sans_16);
@@ -95,11 +105,11 @@ void pinmodesetup() {
 void cycletest() {
 
   volatile static int16_t cyclecount = 0;
-  volatile static int32_t timecount = 0;
   const int uptime = 2;
   const int downtime = 2;
   const int chargetime = 2;
   const int restuptime = 2;
+  const int restdowntime = 2;
 
   switch (cyclephase) {
 
@@ -107,7 +117,7 @@ void cycletest() {
     case 0:
       cyclephase = 0;
 
-      if ( (timecount == uptime) ) {
+      if ( (timecount >= uptime) ) {
         timecount = 0;
         cyclephase = 1;
       } 
@@ -117,7 +127,7 @@ void cycletest() {
     case 1:
       cyclephase = 1;
 
-      if ( (timecount == restuptime) ) {
+      if ( (timecount >= restuptime) ) {
         timecount = 0;
         cyclephase = 2;
       } 
@@ -127,17 +137,27 @@ void cycletest() {
     case 2:
       cyclephase = 2;
 
-      if ( (timecount == downtime) ) {
+      if ( (timecount >= downtime) ) {
         timecount = 0;
         cyclephase = 3;
       } 
       break;
 
-    /* Charging */
+    /* Down Rest */
     case 3:
       cyclephase = 3;
+    
+      if ( (timecount >= restdowntime) ) {
+        timecount = 0;
+        cyclephase = 4;
+      } 
+      break;
 
-      if ( (timecount == chargetime) ) {
+    /* Charging */
+    case 4:
+      cyclephase = 4;
+
+      if ( (timecount >= chargetime) ) {
         timecount = 0;
         cyclephase = 0;
         cyclecount++;
@@ -168,6 +188,8 @@ void oledprint(int cyclecount, int cyclephase, int timecount) {
   } else if (cyclephase == 2) {
     timecounter.println("Down Time"); 
   } else if (cyclephase == 3) {
+    timecounter.println("Down Rest Time"); 
+  } else if (cyclephase == 4) {
     timecounter.println("Charge Time"); 
   }
 
@@ -179,21 +201,48 @@ int checkbuttonstates() {
   volatile static int up;
   volatile static int down;
   volatile static int mode;
+
+  volatile static int updebounce = 0;
+  volatile static int downdebounce = 0;
+  volatile static int programdebounce = 0;
   
   up = digitalRead(upbutton);
   down = digitalRead(downbutton);
   mode = digitalRead(modebutton);
 
   if (!up && down && mode) {
-    buttonpressed = 1;
+    updebounce++;
+    if (updebounce > debouncelimit) {
+      buttonpressed = 1;
+    }
   } else if (!down && up && mode) {
-    buttonpressed = 2;
+    downdebounce++;
+    if (downdebounce > debouncelimit) {
+      buttonpressed = 2;
+    }
   } else if (!mode && up && down) {
-    buttonpressed = 3;
+    modedebounce++;
+    if (modedebounce > debouncelimit) {
+      timecount = 0;
+      cyclephase = 0;
+      modedebounce = -2*debouncelimit;
+      buttonpressed = 3;
+      
+    }
+
   } else if (!up && !down && mode) {
-    buttonpressed = 4;
+    programdebounce++;
+    if (programdebounce > debouncelimit) {
+      programdebounce = -debouncelimit;
+      buttonpressed = 4;
+    }
+    
   } else {
     buttonpressed = 0;
+    updebounce = 0;
+    downdebounce = 0;
+    modedebounce = 0;
+    programdebounce = 0;
   }
 
   return(buttonpressed);
@@ -201,94 +250,157 @@ int checkbuttonstates() {
 
 /* MAIN CONTROL LOOP */
 void controlloop() {
-
-  volatile static int liftmode = 0;   // 0 = Manual, 1 = Auto (cycle test), 2 = Program Mode
-  volatile static int updebounce = 0;
-  volatile static int downdebounce = 0;
-  volatile static int modedebounce = 0;
-  volatile static int programdebounce = 0;
+  volatile static int loopcounter = 0;
 
   /* Manual Mode */
   if (liftmode == 0) {
 
     if (checkbuttonstates() == 1) {
-        updebounce++;
+      digitalWrite(motorinputup, HIGH);
+      digitalWrite(motorinputdown, LOW);
+      Serial.println("UP");
 
-        if (updebounce > 5) {
-          
-        }
-        Serial.println("up pressed");
-        digitalWrite(motorinputup, HIGH);
-        digitalWrite(motorinputdown, LOW);
     } else if (checkbuttonstates() == 2) {
-        Serial.println("down pressed");
-        digitalWrite(motorinputup, LOW);
-        digitalWrite(motorinputdown, HIGH);
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, HIGH);
+      Serial.println("Down");
+
     } else if (checkbuttonstates() == 3) {
-        Serial.println("mode pressed");
-        digitalWrite(motorinputup, LOW);
-        digitalWrite(motorinputdown, LOW);
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, LOW);
+      liftmode = 5;
+      liftmodeprev = 0;
+      cycles.clear();
+      timecounter.clear();
+      cycles.println("AUTO MODE");
+
     } else if (checkbuttonstates() == 4) {
-        
-        Serial.println("program mode");
-        digitalWrite(motorinputup, LOW);
-        digitalWrite(motorinputdown, LOW);
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, LOW);
+      Serial.println("Program");
+
     } else {
-        digitalWrite(motorinputup, LOW);
-        digitalWrite(motorinputdown, LOW);
-        updebounce = 0;
-        downdebounce = 0;
-        modedebounce = 0;
-        programdebounce = 0;
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, LOW);
     }
 
     /* Auto Mode */    
   } else if (liftmode == 1) {
 
+    if (checkbuttonstates() == 3) {
+      liftmode = 5;
+      liftmodeprev = 1;
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, LOW);
+      cycles.clear();
+      timecounter.clear();
+      modedebounce = 0;
+      cycles.println("MANUAL MODE");
+    }
+
     if (cyclephase == 0) {
-      
-    } else if (cyclephase == 1) {
         digitalWrite(motorinputup, HIGH);
         digitalWrite(motorinputdown, LOW);
-        Serial.println("Moving Up");
-    } else if (cyclephase == 2) {
+    } else if (cyclephase == 1) {
         digitalWrite(motorinputdown,LOW);
         digitalWrite(motorinputup,LOW);
-        Serial.println("Stop at top");
-    } else if (cyclephase == 3) {
+    } else if (cyclephase == 2) {
         digitalWrite(motorinputup,LOW);
         digitalWrite(motorinputdown,HIGH);
-        Serial.println("Moving Down");
-    } else if (cyclephase == 4) {
+    } else if (cyclephase == 3 || cyclephase == 4) {
         digitalWrite(motorinputup,LOW);
         digitalWrite(motorinputdown,LOW);
-        Serial.println("Charging");
-    }
+    } 
     
+  } else if (liftmode == 2) {
+      programmodeUI();    
+  } else if (liftmode == 5) {
+    loopcounter++;
+    if (loopcounter > 100) {
+      if (liftmodeprev == 0) {
+        liftmode = 1;
+        Serial.println("changed to Auto");
+      } else if (liftmodeprev == 1) {
+        liftmode = 0;
+        Serial.println("changed to Manual");
+      }
+      modedebounce = 0;
+      loopcounter = 0;
+    }
   }
-  
-  
 }
 
+
+void programmodeUI() {
+
+  volatile static int programcounter = 0;
+  volatile static int programpage = 0;
+  volatile static int intropagetime = 0;
+  
+  digitalWrite(motorinputup,LOW);
+  digitalWrite(motorinputdown,LOW);
+
+    if (checkbuttonstates() == 4) {
+      liftmode = 0;
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, LOW);
+    }
+  
+//  cycles.clear();
+//  cycles.println("Cycles: ");
+//  cycles.println(cyclecount, DEC);
+//  timecounter.println(timecount, DEC);
+  
+  switch (programpage) {
+  
+  case 0:
+    programcounter++;
+    cycles.clear();
+    timecounter.clear();
+  
+    if (programcounter >= intropagetime) {
+      cycles.println("");
+      cycles.println("PROGRAM MODE");
+      programpage = 1;
+      programcounter = 0;
+    }
+  
+  break;
+  
+  case 1:
+    cycles.clear();
+    timecounter.clear();
+    
+    cycles.println("UP TIME:");
+    cycles.println(uptime, DEC);
+
+    
+    
+  break;
+  
+  
+  
+  }
+  
+}
 
 ISR(TIMER1_COMPA_vect) {
   //timer1 interrupt 1Hz toggles pin 13 (LED)
   //generates pulse wave of frequency 1Hz/2 = 0.5kHz (takes two cycles for full wave- toggle high then toggle low)
 
-  cycletest();
+  if (liftmode == 1) {
+    cycletest();
+  }
   
 }
 
 ISR(TIMER0_COMPA_vect) {
-  //timer1 interrupt 100Hz 
-  //generates pulse wave of frequency 100Hz
+  //timer0 interrupt 125Hz 
 
-//  controlloop();
- 
-      
- 
+  controlloop();
 }
 
 void loop() {
-
+//  Serial.println(modedebounce);
+//  Serial.println(liftmode);
 }
