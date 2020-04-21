@@ -32,14 +32,15 @@ const int motorinputdown = 9;
 volatile static int buttonpressed;
 volatile static int cyclephase = 0;
 volatile static int liftmode = 0;   // 0 = Manual, 1 = Auto (cycle test), 2 = Program Mode
-volatile static int liftmodeprev = 0;
+volatile static int liftmodenext = 0;
 volatile static int32_t timecount = 0;
 
-const int uptime = 2;
-const int downtime = 2;
-const int chargetime = 2;
-const int restuptime = 2;
-const int restdowntime = 2;
+volatile static int uptime = 2;
+volatile static int newuptime = uptime;
+volatile static int downtime = 2;
+volatile static int chargetime = 2;
+volatile static int restuptime = 2;
+volatile static int restdowntime = 2;
 
 volatile static int modedebounce = 0;
   volatile static int debouncelimit = 60;
@@ -117,7 +118,7 @@ void cycletest() {
     case 0:
       cyclephase = 0;
 
-      if ( (timecount >= uptime) ) {
+      if ( (timecount >= newuptime) ) {
         timecount = 0;
         cyclephase = 1;
       } 
@@ -269,7 +270,7 @@ void controlloop() {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
       liftmode = 5;
-      liftmodeprev = 0;
+      liftmodenext = 1;
       cycles.clear();
       timecounter.clear();
       cycles.println("AUTO MODE");
@@ -277,7 +278,13 @@ void controlloop() {
     } else if (checkbuttonstates() == 4) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
-      Serial.println("Program");
+      liftmode = 5;
+      liftmodenext = 2;
+      cycles.clear();
+      timecounter.clear();
+      cycles.println("");
+      cycles.println("PROGRAM MODE");
+      loopcounter = 0;
 
     } else {
       digitalWrite(motorinputup, LOW);
@@ -289,7 +296,7 @@ void controlloop() {
 
     if (checkbuttonstates() == 3) {
       liftmode = 5;
-      liftmodeprev = 1;
+      liftmodenext = 0;
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
       cycles.clear();
@@ -317,12 +324,17 @@ void controlloop() {
   } else if (liftmode == 5) {
     loopcounter++;
     if (loopcounter > 100) {
-      if (liftmodeprev == 0) {
+      if (liftmodenext == 1) {
         liftmode = 1;
+        loopcounter = 0;
         Serial.println("changed to Auto");
-      } else if (liftmodeprev == 1) {
+      } else if (liftmodenext == 0) {
         liftmode = 0;
+        loopcounter = 0;
         Serial.println("changed to Manual");
+      } else if (liftmodenext == 2) {
+        liftmode = 2;
+        loopcounter = 0;
       }
       modedebounce = 0;
       loopcounter = 0;
@@ -335,48 +347,58 @@ void programmodeUI() {
 
   volatile static int programcounter = 0;
   volatile static int programpage = 0;
-  volatile static int intropagetime = 0;
+  volatile static int intropagetime = 100;
   
   digitalWrite(motorinputup,LOW);
   digitalWrite(motorinputdown,LOW);
 
-    if (checkbuttonstates() == 4) {
-      liftmode = 0;
+  if (checkbuttonstates() == 4) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
-    }
-  
-//  cycles.clear();
-//  cycles.println("Cycles: ");
-//  cycles.println(cyclecount, DEC);
-//  timecounter.println(timecount, DEC);
+      uptime = uptime;
+      liftmode = 5;
+      liftmodenext = 0;
+      cycles.clear();
+      timecounter.clear();
+      programpage = 0;
+      cycles.println("MANUAL MODE");
+
+  }
   
   switch (programpage) {
   
-  case 0:
-    programcounter++;
-    cycles.clear();
-    timecounter.clear();
-  
-    if (programcounter >= intropagetime) {
-      cycles.println("");
-      cycles.println("PROGRAM MODE");
-      programpage = 1;
-      programcounter = 0;
-    }
-  
-  break;
-  
-  case 1:
-    cycles.clear();
-    timecounter.clear();
+    case 0:
+      programcounter++;
+      if (programcounter >= intropagetime) {
+        programpage = 1;
+        programcounter = 0;
+        uptime = newuptime;
+        cycles.clear();
+        timecounter.clear();
+        cycles.println("UP TIME:");
+        cycles.println(uptime, DEC);
+      }
     
-    cycles.println("UP TIME:");
-    cycles.println(uptime, DEC);
-
+    break;
     
-    
-  break;
+    case 1:
+  
+      if (checkbuttonstates() == 1) {
+        uptime++;
+        newuptime = uptime;
+        cycles.clear();
+        cycles.println("UP TIME:");
+        cycles.println(uptime, DEC);
+  
+      } else if (checkbuttonstates() == 2) {
+        uptime--;
+        newuptime = uptime;
+        cycles.clear();
+        cycles.println("UP TIME:");
+        cycles.println(uptime, DEC);
+      }
+      
+    break;
   
   
   
