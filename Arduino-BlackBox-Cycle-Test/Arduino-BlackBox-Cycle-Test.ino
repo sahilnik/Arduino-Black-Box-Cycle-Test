@@ -26,8 +26,8 @@ const int downbutton = 5;
 const int modebutton = 4;
 
 /* input from lift handset PCB */
-const int motorinputup = 8;
-const int motorinputdown = 9;
+const int motorinputup = A1;
+const int motorinputdown = A2;
 
 /* Relay output */
 const int relaysignal = A0;
@@ -38,15 +38,15 @@ volatile static int liftmode = 5;   // 0 = Manual, 1 = Auto (cycle test), 2 = Pr
 volatile static int liftmodenext = 0;
 volatile static int32_t timecount = 0;
 
-volatile static int uptime = 2;
+volatile static int uptime = 20;
 volatile static int newuptime = uptime;
-volatile static int downtime = 2;
+volatile static int downtime = 20;
 volatile static int newdowntime = downtime;
-volatile static int chargetime = 2;
+volatile static int chargetime = 600;
 volatile static int newchargetime = chargetime;
-volatile static int restuptime = 2;
+volatile static int restuptime = 3;
 volatile static int newrestuptime = restuptime;
-volatile static int restdowntime = 2;
+volatile static int restdowntime = 5;
 volatile static int newrestdowntime = restdowntime;
 
 volatile static int modedebounce = 0;
