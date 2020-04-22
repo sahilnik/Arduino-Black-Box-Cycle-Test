@@ -276,12 +276,12 @@ void controlloop() {
     if (checkbuttonstates() == 1) {
       digitalWrite(motorinputup, HIGH);
       digitalWrite(motorinputdown, LOW);
-      Serial.println("UP");
+//      Serial.println("UP");
 
     } else if (checkbuttonstates() == 2) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, HIGH);
-      Serial.println("Down");
+//      Serial.println("Down");
 
     } else if (checkbuttonstates() == 3) {
       digitalWrite(motorinputup, LOW);
@@ -349,11 +349,11 @@ void controlloop() {
       if (liftmodenext == 1) {
         liftmode = 1;
         loopcounter = 0;
-        Serial.println("changed to Auto");
+//        Serial.println("changed to Auto");
       } else if (liftmodenext == 0) {
         liftmode = 0;
         loopcounter = 0;
-        Serial.println("changed to Manual");
+//        Serial.println("changed to Manual");
         cycles.clear();
         timecounter.clear();
         modedebounce = 0;
@@ -401,7 +401,7 @@ void programmodeUI() {
     cycles.println("MANUAL MODE");
 
   } else if (checkbuttonstates() == 3) {
-    Serial.println("mode button pressed in program mode");
+//    Serial.println("mode button pressed in program mode");
     if (programpage == 0 && pauseflag == 0) {
       programpage = 1;
       pauseflag = 1;
