@@ -29,6 +29,9 @@ const int modebutton = 4;
 const int motorinputup = 8;
 const int motorinputdown = 9;
 
+/* Relay output */
+const int relaysignal = A0;
+
 volatile static int buttonpressed;
 volatile static int cyclephase = 0;
 volatile static int liftmode = 5;   // 0 = Manual, 1 = Auto (cycle test), 2 = Program Mode
@@ -110,6 +113,9 @@ void pinmodesetup() {
 
   digitalWrite(motorinputup, LOW);
   digitalWrite(motorinputdown, LOW);
+
+  pinMode(relaysignal, OUTPUT);
+  digitalWrite(relaysignal, LOW);
 }
 
 
@@ -172,6 +178,7 @@ void cycletest() {
         timecount = 0;
         cyclephase = 0;
         cyclecount++;
+        digitalWrite(relaysignal, LOW); 
       }
       break;
   }
@@ -309,6 +316,7 @@ void controlloop() {
       liftmodenext = 0;
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
+      digitalWrite(relaysignal, LOW); 
       cycles.clear();
       timecounter.clear();
       modedebounce = 0;
@@ -324,9 +332,13 @@ void controlloop() {
     } else if (cyclephase == 2) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, HIGH);
-    } else if (cyclephase == 3 || cyclephase == 4) {
+    } else if (cyclephase == 3) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
+    } else if (cyclephase == 4) {
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, LOW);
+      digitalWrite(relaysignal, HIGH); 
     }
 
   } else if (liftmode == 2) {
