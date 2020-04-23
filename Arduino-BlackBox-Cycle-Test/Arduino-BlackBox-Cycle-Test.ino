@@ -40,11 +40,11 @@ volatile static int32_t timecount = 0;
 
 volatile static int uptime = 20;
 volatile static int newuptime = uptime;
-volatile static int downtime = 20;
+volatile static int downtime = 15;
 volatile static int newdowntime = downtime;
 volatile static int chargetime = 600;
 volatile static int newchargetime = chargetime;
-volatile static int restuptime = 3;
+volatile static int restuptime = 5;
 volatile static int newrestuptime = restuptime;
 volatile static int restdowntime = 5;
 volatile static int newrestdowntime = restdowntime;
@@ -60,7 +60,7 @@ void setup() {
   initTIMinterrupts();
   pinmodesetup();
   oled.selectFont(Droid_Sans_16);
-  Serial.begin(9600);
+  //  Serial.begin(9600);
 
 }
 
@@ -69,7 +69,7 @@ void initTIMinterrupts() {
 
   /* Initialize 1 Hz interrupt on Timer1 */
   cli();
-  
+
   //set timer1 interrupt at 1Hz
   TCCR1A = 0;// set entire TCCR1A register to 0
   TCCR1B = 0;// same for TCCR1B
@@ -84,13 +84,13 @@ void initTIMinterrupts() {
   TIMSK1 |= (1 << OCIE1A);
 
   /* Initialize 100 Hz interrupt on Timer0 */
-  TCCR0A = 0; 
+  TCCR0A = 0;
   TCCR0B = 0;
   /* Initialize 8 bit count register as 0 */
   TCNT0 = 0;
   /* Set TOP value to OCR0A
-  OCR0A = (16,000,000 / N * f) - 1 
-  Therefore, 77.125 is OCR0A needed for 100 Hz frequency on Timer 0 */
+    OCR0A = (16,000,000 / N * f) - 1
+    Therefore, 77.125 is OCR0A needed for 100 Hz frequency on Timer 0 */
   OCR0A = 155;
   /* Set to CTC (Clear timer on compare match mode) */
   TCCR0A |= (1 << WGM01);
@@ -167,6 +167,7 @@ void cycletest() {
       if ( (timecount >= newrestdowntime) ) {
         timecount = 0;
         cyclephase = 4;
+        cyclecount++;
       }
       break;
 
@@ -174,11 +175,16 @@ void cycletest() {
     case 4:
       cyclephase = 4;
 
+      if ( (timecount >= (newchargetime - 5) ) ) {
+        digitalWrite(relaysignal, LOW);
+      } else {
+        digitalWrite(relaysignal, HIGH);
+      }
+
       if ( (timecount >= newchargetime) ) {
         timecount = 0;
         cyclephase = 0;
-        cyclecount++;
-        digitalWrite(relaysignal, LOW); 
+        digitalWrite(relaysignal, LOW);
       }
       break;
   }
@@ -200,15 +206,15 @@ void oledprint(int cyclecount, int cyclephase, int timecount) {
 
   timecounter.clear();
   if (cyclephase == 0) {
-    timecounter.println("Up Time");
+    timecounter.println("Up Time:");
   } else if (cyclephase == 1) {
-    timecounter.println("Up Rest Time");
+    timecounter.println("Up Rest Time:");
   } else if (cyclephase == 2) {
-    timecounter.println("Down Time");
+    timecounter.println("Down Time:");
   } else if (cyclephase == 3) {
-    timecounter.println("Down Rest Time");
+    timecounter.println("Down Rest Time:");
   } else if (cyclephase == 4) {
-    timecounter.println("Charge Time");
+    timecounter.println("Charge Time:");
   }
 
   timecounter.println(timecount, DEC);
@@ -276,12 +282,12 @@ void controlloop() {
     if (checkbuttonstates() == 1) {
       digitalWrite(motorinputup, HIGH);
       digitalWrite(motorinputdown, LOW);
-//      Serial.println("UP");
+      //      Serial.println("UP");
 
     } else if (checkbuttonstates() == 2) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, HIGH);
-//      Serial.println("Down");
+      //      Serial.println("Down");
 
     } else if (checkbuttonstates() == 3) {
       digitalWrite(motorinputup, LOW);
@@ -316,11 +322,12 @@ void controlloop() {
       liftmodenext = 0;
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
-      digitalWrite(relaysignal, LOW); 
+      digitalWrite(relaysignal, LOW);
       cycles.clear();
       timecounter.clear();
       modedebounce = 0;
       cycles.println("MANUAL MODE");
+      loopcounter = 0;
     }
 
     if (cyclephase == 0) {
@@ -338,27 +345,29 @@ void controlloop() {
     } else if (cyclephase == 4) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
-      digitalWrite(relaysignal, HIGH); 
+//      digitalWrite(relaysignal, HIGH);
     }
 
   } else if (liftmode == 2) {
     programmodeUI();
   } else if (liftmode == 5) {
+    digitalWrite(motorinputup, LOW);
+    digitalWrite(motorinputdown, LOW);
+    digitalWrite(relaysignal, LOW);
     loopcounter++;
     if (loopcounter > 100) {
       if (liftmodenext == 1) {
         liftmode = 1;
         loopcounter = 0;
-//        Serial.println("changed to Auto");
+        
       } else if (liftmodenext == 0) {
         liftmode = 0;
         loopcounter = 0;
-//        Serial.println("changed to Manual");
         cycles.clear();
         timecounter.clear();
         modedebounce = 0;
         cycles.println("MANUAL MODE");
-        
+
       } else if (liftmodenext == 2) {
         liftmode = 2;
         loopcounter = 0;
@@ -378,7 +387,7 @@ void programmodeUI() {
   volatile static int pauseflag = 0;
   volatile static int pausecount = 0;
 
-  if (pauseflag == 1){
+  if (pauseflag == 1) {
     pausecount++;
   }
   if (pausecount >= 50) {
@@ -401,7 +410,7 @@ void programmodeUI() {
     cycles.println("MANUAL MODE");
 
   } else if (checkbuttonstates() == 3) {
-//    Serial.println("mode button pressed in program mode");
+    //    Serial.println("mode button pressed in program mode");
     if (programpage == 0 && pauseflag == 0) {
       programpage = 1;
       pauseflag = 1;
@@ -410,7 +419,7 @@ void programmodeUI() {
       cycles.println("UP TIME:");
       cycles.print(uptime, DEC);
       cycles.println(" Seconds");
-      
+
     } else if (programpage == 1 && pauseflag == 0) {
       programpage = 2;
       pauseflag = 1;
@@ -418,7 +427,7 @@ void programmodeUI() {
       cycles.println("UP REST TIME:");
       cycles.print(restuptime, DEC);
       cycles.println(" Seconds");
-      
+
     } else if (programpage == 2 && pauseflag == 0) {
       programpage = 3;
       pauseflag = 1;
@@ -426,7 +435,7 @@ void programmodeUI() {
       cycles.println("DOWN TIME:");
       cycles.print(downtime, DEC);
       cycles.println(" Seconds");
-      
+
     } else if (programpage == 3 && pauseflag == 0) {
       programpage = 4;
       pauseflag = 1;
@@ -434,7 +443,7 @@ void programmodeUI() {
       cycles.println("DOWN REST TIME:");
       cycles.print(restdowntime, DEC);
       cycles.println(" Seconds");
-        
+
     } else if (programpage == 4 && pauseflag == 0) {
       programpage = 5;
       pauseflag = 1;
@@ -612,22 +621,22 @@ ISR(TIMER1_COMPA_vect) {
   //Serial.println("1 Hz loop");
 
   if (liftmode == 1) {
-        cycletest();
+    cycletest();
   }
 
 }
 
 ISR(TIMER0_COMPA_vect) {
   //timer0 interrupt 100Hz
-//  volatile static int counter = 0;
-//  counter++;
-//
-//  if (counter >= 100) {
-//    Serial.println("100 Hz loop");
-//    counter = 0;
-//  }
+  //  volatile static int counter = 0;
+  //  counter++;
+  //
+  //  if (counter >= 100) {
+  //    Serial.println("100 Hz loop");
+  //    counter = 0;
+  //  }
 
-    controlloop();
+  controlloop();
 
 
 }
