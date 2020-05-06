@@ -38,16 +38,19 @@ volatile static int liftmode = 5;   // 0 = Manual, 1 = Auto (cycle test), 2 = Pr
 volatile static int liftmodenext = 0;
 volatile static int32_t timecount = 0;
 
-volatile static int uptime = 20;
+volatile static int uptime = 18; // 18
 volatile static int newuptime = uptime;
-volatile static int downtime = 15;
+volatile static int downtime = 10; // 10
 volatile static int newdowntime = downtime;
-volatile static int chargetime = 600;
-volatile static int newchargetime = chargetime;
-volatile static int restuptime = 5;
+volatile static int chargetime = 15; // 15
+volatile static int newchargetime = 60*chargetime;
+volatile static int restuptime = 3; // 3
 volatile static int newrestuptime = restuptime;
-volatile static int restdowntime = 5;
+volatile static int restdowntime = 5; // 5
 volatile static int newrestdowntime = restdowntime;
+volatile static int chargetoggle = 0;
+volatile static int cycleresttime = 10; // 10
+volatile static int newcycleresttime = 60*cycleresttime;
 
 volatile static int modedebounce = 0;
 volatile static int debouncelimit = 60;
@@ -165,9 +168,16 @@ void cycletest() {
       cyclephase = 3;
 
       if ( (timecount >= newrestdowntime) ) {
-        timecount = 0;
-        cyclephase = 4;
-        cyclecount++;
+
+        if (chargetoggle == 0) {
+          timecount = 0;
+          cyclephase = 5;
+          cyclecount++;
+        } else if (chargetoggle == 1) {
+          timecount = 0;
+          cyclephase = 4;
+          cyclecount++;
+        }
       }
       break;
 
@@ -187,6 +197,16 @@ void cycletest() {
         digitalWrite(relaysignal, LOW);
       }
       break;
+
+    /* Cycle rest */
+    case 5:
+      cyclephase = 5;
+      if ( (timecount >= newcycleresttime) ) {
+        timecount = 0;
+        cyclephase = 0;
+      }
+      break;
+
   }
 
   oledprint(cyclecount, cyclephase, timecount);
@@ -215,6 +235,8 @@ void oledprint(int cyclecount, int cyclephase, int timecount) {
     timecounter.println("Down Rest Time:");
   } else if (cyclephase == 4) {
     timecounter.println("Charge Time:");
+  } else if (cyclephase == 5) {
+    timecounter.println("Rest Time:");   
   }
 
   timecounter.println(timecount, DEC);
@@ -274,6 +296,7 @@ int checkbuttonstates() {
 
 /* MAIN CONTROL LOOP */
 void controlloop() {
+  
   volatile static int loopcounter = 0;
 
   /* Manual Mode */
@@ -282,12 +305,10 @@ void controlloop() {
     if (checkbuttonstates() == 1) {
       digitalWrite(motorinputup, HIGH);
       digitalWrite(motorinputdown, LOW);
-      //      Serial.println("UP");
 
     } else if (checkbuttonstates() == 2) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, HIGH);
-      //      Serial.println("Down");
 
     } else if (checkbuttonstates() == 3) {
       digitalWrite(motorinputup, LOW);
@@ -345,7 +366,10 @@ void controlloop() {
     } else if (cyclephase == 4) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
-//      digitalWrite(relaysignal, HIGH);
+    } else if (cyclephase == 5) {
+      digitalWrite(motorinputup, LOW);
+      digitalWrite(motorinputdown, LOW);
+      digitalWrite(relaysignal, LOW);
     }
 
   } else if (liftmode == 2) {
@@ -410,7 +434,6 @@ void programmodeUI() {
     cycles.println("MANUAL MODE");
 
   } else if (checkbuttonstates() == 3) {
-    //    Serial.println("mode button pressed in program mode");
     if (programpage == 0 && pauseflag == 0) {
       programpage = 1;
       pauseflag = 1;
@@ -424,7 +447,7 @@ void programmodeUI() {
       programpage = 2;
       pauseflag = 1;
       cycles.clear();
-      cycles.println("UP REST TIME:");
+      cycles.println("UP STOP:");
       cycles.print(restuptime, DEC);
       cycles.println(" Seconds");
 
@@ -440,20 +463,43 @@ void programmodeUI() {
       programpage = 4;
       pauseflag = 1;
       cycles.clear();
-      cycles.println("DOWN REST TIME:");
+      cycles.println("DOWN STOP:");
       cycles.print(restdowntime, DEC);
       cycles.println(" Seconds");
 
     } else if (programpage == 4 && pauseflag == 0) {
-      programpage = 5;
+      programpage = 6;
       pauseflag = 1;
+
       cycles.clear();
-      cycles.println("CHARGE TIME:");
-      cycles.print(chargetime, DEC);
-      cycles.println(" Seconds");
-    } else if (programpage == 5 && pauseflag == 0) {
+      cycles.println("CHARGING?:");
+      if (chargetoggle == 0) {
+        cycles.println("NO");
+      } else if (chargetoggle == 1) {
+        cycles.print("YES");
+      }
+      
+    } else if (programpage == 6 && pauseflag == 0) {
+      if (chargetoggle == 0) {
+        programpage = 7;
+        pauseflag = 1;
+        cycles.clear();
+        cycles.println("REST TIME:");
+        cycles.print(cycleresttime, DEC);
+        cycles.println(" Minutes");
+        
+      } else if (chargetoggle == 1) {
+        programpage = 5;
+        pauseflag = 1;
+        cycles.clear();
+        cycles.println("CHARGE TIME:");
+        cycles.print(chargetime, DEC);
+        cycles.println(" Minutes");
+      }
+      
+    } else if ((programpage == 7 || programpage == 5) && pauseflag == 0) {
       programpage = 0;
-      liftmode = 1;
+      liftmode = 5;
       liftmodenext = 0;
       pauseflag = 0;
     }
@@ -512,7 +558,7 @@ void programmodeUI() {
           restuptime = 0;
         }
         cycles.clear();
-        cycles.println("UP REST TIME:");
+        cycles.println("UP STOP TIME:");
         cycles.print(restuptime, DEC);
         cycles.println(" Seconds");
 
@@ -523,7 +569,7 @@ void programmodeUI() {
           restuptime = 0;
         }
         cycles.clear();
-        cycles.println("UP REST TIME:");
+        cycles.println("UP STOP TIME:");
         cycles.print(restuptime, DEC);
         cycles.println(" Seconds");
       }
@@ -542,7 +588,7 @@ void programmodeUI() {
         cycles.println("DOWN TIME:");
         cycles.print(downtime, DEC);
         cycles.println(" Seconds");
-
+      
       } else if (checkbuttonstates() == 2) {
         downtime--;
         newdowntime = downtime;
@@ -566,7 +612,7 @@ void programmodeUI() {
           restdowntime = 0;
         }
         cycles.clear();
-        cycles.println("DOWN REST TIME:");
+        cycles.println("DOWN STOP TIME:");
         cycles.print(restdowntime, DEC);
         cycles.println(" Seconds");
 
@@ -577,9 +623,10 @@ void programmodeUI() {
           restdowntime = 0;
         }
         cycles.clear();
-        cycles.println("DOWN REST TIME:");
+        cycles.println("DOWN STOP TIME:");
         cycles.print(restdowntime, DEC);
         cycles.println(" Seconds");
+        
       }
 
       break;
@@ -588,25 +635,68 @@ void programmodeUI() {
 
       if (checkbuttonstates() == 1) {
         chargetime++;
-        newchargetime = chargetime;
+        newchargetime = 60*chargetime;
         if (chargetime <= 0) {
           chargetime = 0;
         }
         cycles.clear();
         cycles.println("CHARGE TIME:");
         cycles.print(chargetime, DEC);
-        cycles.println(" Seconds");
-
+        cycles.println(" Minutes");
+        
       } else if (checkbuttonstates() == 2) {
         chargetime--;
-        newchargetime = chargetime;
+        newchargetime = 60*chargetime;
         if (chargetime <= 0) {
           chargetime = 0;
         }
         cycles.clear();
         cycles.println("CHARGE TIME:");
         cycles.print(chargetime, DEC);
-        cycles.println(" Seconds");
+        cycles.println(" Minutes");
+      }
+
+      break;
+
+    case 6:
+
+      if (checkbuttonstates() == 1) {
+        chargetoggle = 1;
+        cycles.clear();
+        cycles.println("CHARGING?:");
+        cycles.println("YES");
+      } else if (checkbuttonstates() == 2) {
+        chargetoggle = 0;
+        cycles.clear();
+        cycles.println("CHARGING?:");
+        cycles.println("NO");
+      }
+
+      break;
+
+    case 7:
+
+      if (checkbuttonstates() == 1) {
+        cycleresttime++;
+        newcycleresttime = 60*cycleresttime;
+        if (cycleresttime <= 0) {
+          cycleresttime = 0;
+        }
+        cycles.clear();
+        cycles.println("REST TIME:");
+        cycles.print(cycleresttime, DEC);
+        cycles.println(" Minutes");
+
+      } else if (checkbuttonstates() == 2) {
+        cycleresttime--;
+        newcycleresttime = 60*cycleresttime;
+        if (cycleresttime <= 0) {
+          cycleresttime = 0;
+        }
+        cycles.clear();
+        cycles.println("REST TIME:");
+        cycles.print(cycleresttime, DEC);
+        cycles.println(" Minutes");
       }
 
       break;
@@ -628,13 +718,6 @@ ISR(TIMER1_COMPA_vect) {
 
 ISR(TIMER0_COMPA_vect) {
   //timer0 interrupt 100Hz
-  //  volatile static int counter = 0;
-  //  counter++;
-  //
-  //  if (counter >= 100) {
-  //    Serial.println("100 Hz loop");
-  //    counter = 0;
-  //  }
 
   controlloop();
 
