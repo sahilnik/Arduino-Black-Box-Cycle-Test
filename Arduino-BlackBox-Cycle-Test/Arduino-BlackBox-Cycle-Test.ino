@@ -1,5 +1,7 @@
 #include <EEPROM.h>
 #include "EEPROMAnything.h"
+#include <SPI.h>
+#include <SD.h>
 
 #include <FTOLED.h>
 #include <fonts/Arial14.h>
@@ -13,12 +15,14 @@
 #include <fonts/SystemFont5x7.h>
 
 /* OLED DISPLAY PARAMETERS */
-const byte pin_cs = 7;
-const byte pin_dnc = 2;
-const byte pin_reset = 3;
-OLED oled(pin_cs, pin_dnc, pin_reset);
-OLED_TextBox cycles(oled, 0, 64, 128, 64);
-OLED_TextBox timecounter(oled, 0, 0, 128, 64);
+const byte oledpin_cs = 7;
+const byte oledpin_dnc = 2;
+const byte oledpin_reset = 3;
+OLED oled(oledpin_cs, oledpin_dnc, oledpin_reset);
+OLED_TextBox cycles(oled, 0, 64, 64, 64);
+OLED_TextBox timecounter(oled, 64, 64, 64, 64);
+OLED_TextBox currenttextbox(oled,0,0,128,80);
+OLED_TextBox manualmodetextbox(oled,0, 64, 128, 64);
 
 /* hardware buttons */
 const int upbutton = 6;
@@ -32,15 +36,25 @@ const int motorinputdown = A2;
 /* Relay output */
 const int relaysignal = A0;
 
+/* Current Sensor input */
+const int rawinputpin = A3;
+
+/* SD Card */
+Sd2Card card;
+SdVolume volume;
+SdFile root;
+File myFile;
+const int sdpin_cs = 9;
+
 volatile static int buttonpressed;
 volatile static int cyclephase = 0;
 volatile static int liftmode = 5;   // 0 = Manual, 1 = Auto (cycle test), 2 = Program Mode
 volatile static int liftmodenext = 0;
 volatile static int32_t timecount = 0;
 
-volatile static int uptime = 18; // 18
+volatile static int uptime = 17; // 18
 volatile static int newuptime = uptime;
-volatile static int downtime = 10; // 10
+volatile static int downtime = 8; // 10
 volatile static int newdowntime = downtime;
 volatile static int chargetime = 15; // 15
 volatile static int newchargetime = 60*chargetime;
@@ -57,14 +71,19 @@ volatile static int debouncelimit = 60;
 
 volatile static int programcounter = 0;
 
+volatile static float currentavg = 0;
+volatile static float currentmax = 0;
+volatile static float prev_currentavg = 0;
+
+volatile static int seccount = 0;
+
 void setup() {
 
   oled.begin();
   initTIMinterrupts();
   pinmodesetup();
   oled.selectFont(Droid_Sans_16);
-  //  Serial.begin(9600);
-
+  Serial.begin(9600);
 }
 
 
@@ -121,10 +140,16 @@ void pinmodesetup() {
   digitalWrite(relaysignal, LOW);
 }
 
+void resetOLEDtextbox() {
+  cycles.clear();
+  timecounter.clear();
+  currenttextbox.clear();
+  manualmodetextbox.clear();
+}
 
 void cycletest() {
 
-  volatile static int16_t cyclecount = 0;
+  volatile static int16_t cyclecount = 1332;
   const int uptime = 2;
   const int downtime = 2;
   const int chargetime = 2;
@@ -136,6 +161,7 @@ void cycletest() {
     /* Moving Up */
     case 0:
       cyclephase = 0;
+      seccount = 0;
 
       if ( (timecount >= newuptime) ) {
         timecount = 0;
@@ -146,6 +172,7 @@ void cycletest() {
     /* Rest at Up */
     case 1:
       cyclephase = 1;
+      seccount = 0;
 
       if ( (timecount >= newrestuptime) ) {
         timecount = 0;
@@ -156,6 +183,7 @@ void cycletest() {
     /* Moving Down */
     case 2:
       cyclephase = 2;
+      seccount = 0;
 
       if ( (timecount >= newdowntime) ) {
         timecount = 0;
@@ -220,23 +248,23 @@ void cycletest() {
 void oledprint(int cyclecount, int cyclephase, int timecount) {
 
   /* Print cycle count and timing to OLED display */
-  cycles.clear();
+  cycles.reset();
   cycles.println("Cycles: ");
   cycles.println(cyclecount, DEC);
 
-  timecounter.clear();
+  timecounter.reset();
   if (cyclephase == 0) {
-    timecounter.println("Up Time:");
+    timecounter.println("Up:");
   } else if (cyclephase == 1) {
-    timecounter.println("Up Rest Time:");
+    timecounter.println("Pause:");
   } else if (cyclephase == 2) {
-    timecounter.println("Down Time:");
+    timecounter.println("Down:");
   } else if (cyclephase == 3) {
-    timecounter.println("Down Rest Time:");
+    timecounter.println("Pause:");
   } else if (cyclephase == 4) {
-    timecounter.println("Charge Time:");
+    timecounter.println("Charge:");
   } else if (cyclephase == 5) {
-    timecounter.println("Rest Time:");   
+    timecounter.println("Rest:");   
   }
 
   timecounter.println(timecount, DEC);
@@ -260,11 +288,13 @@ int checkbuttonstates() {
     updebounce++;
     if (updebounce > debouncelimit) {
       buttonpressed = 1;
+      seccount = 0;
     }
   } else if (!down && up && mode) {
     downdebounce++;
     if (downdebounce > debouncelimit) {
       buttonpressed = 2;
+      seccount = 0;
     }
   } else if (!mode && up && down) {
     modedebounce++;
@@ -296,8 +326,24 @@ int checkbuttonstates() {
 
 /* MAIN CONTROL LOOP */
 void controlloop() {
-  
+
   volatile static int loopcounter = 0;
+  volatile static int mscount = 0;
+  mscount++;
+
+  if (mscount == 25 && liftmode != 2) {
+    mscount = 0;
+    currenttextbox.reset();
+    oled.selectFont(Droid_Sans_24);
+    currenttextbox.print(currentavg, 2);
+    currenttextbox.print(" Amps");
+    oled.selectFont(Droid_Sans_12);
+    currenttextbox.println("");
+    oled.selectFont(Droid_Sans_24);
+    currenttextbox.print(currentmax, 2);
+    currenttextbox.print(" Peak");
+    oled.selectFont(Droid_Sans_16);
+  }
 
   /* Manual Mode */
   if (liftmode == 0) {
@@ -315,17 +361,15 @@ void controlloop() {
       digitalWrite(motorinputdown, LOW);
       liftmode = 5;
       liftmodenext = 1;
-      cycles.clear();
-      timecounter.clear();
-      cycles.println("AUTO MODE");
+      resetOLEDtextbox();
+      cycles.println("AUTO  MODE");
 
     } else if (checkbuttonstates() == 4) {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
       liftmode = 5;
       liftmodenext = 2;
-      cycles.clear();
-      timecounter.clear();
+      resetOLEDtextbox();
       cycles.println("");
       cycles.println("PROGRAM MODE");
       loopcounter = 0;
@@ -344,10 +388,9 @@ void controlloop() {
       digitalWrite(motorinputup, LOW);
       digitalWrite(motorinputdown, LOW);
       digitalWrite(relaysignal, LOW);
-      cycles.clear();
-      timecounter.clear();
+      resetOLEDtextbox();
       modedebounce = 0;
-      cycles.println("MANUAL MODE");
+      manualmodetextbox.println("MANUAL MODE");
       loopcounter = 0;
     }
 
@@ -387,10 +430,9 @@ void controlloop() {
       } else if (liftmodenext == 0) {
         liftmode = 0;
         loopcounter = 0;
-        cycles.clear();
-        timecounter.clear();
+        resetOLEDtextbox();
         modedebounce = 0;
-        cycles.println("MANUAL MODE");
+        manualmodetextbox.println("MANUAL MODE");
 
       } else if (liftmodenext == 2) {
         liftmode = 2;
@@ -401,6 +443,17 @@ void controlloop() {
       loopcounter = 0;
     }
   }
+  currentsenseIN();
+
+  if (seccount > 1500) {
+    currentmax = 0;
+    prev_currentavg = 0;
+    seccount = 0;
+    currenttextbox.clear();
+  }
+
+//  Serial.println(seccount);
+  seccount++;
 }
 
 
@@ -428,17 +481,17 @@ void programmodeUI() {
     uptime = uptime;
     liftmode = 5;
     liftmodenext = 0;
-    cycles.clear();
-    timecounter.clear();
+    cycles.reset();
+    timecounter.reset();
     programpage = 0;
-    cycles.println("MANUAL MODE");
+    cycles.println("MANUALMODE");
 
   } else if (checkbuttonstates() == 3) {
     if (programpage == 0 && pauseflag == 0) {
       programpage = 1;
       pauseflag = 1;
-      cycles.clear();
-      timecounter.clear();
+      cycles.reset();
+      timecounter.reset();
       cycles.println("UP TIME:");
       cycles.print(uptime, DEC);
       cycles.println(" Seconds");
@@ -446,7 +499,7 @@ void programmodeUI() {
     } else if (programpage == 1 && pauseflag == 0) {
       programpage = 2;
       pauseflag = 1;
-      cycles.clear();
+      cycles.reset();
       cycles.println("UP STOP:");
       cycles.print(restuptime, DEC);
       cycles.println(" Seconds");
@@ -454,7 +507,7 @@ void programmodeUI() {
     } else if (programpage == 2 && pauseflag == 0) {
       programpage = 3;
       pauseflag = 1;
-      cycles.clear();
+      cycles.reset();
       cycles.println("DOWN TIME:");
       cycles.print(downtime, DEC);
       cycles.println(" Seconds");
@@ -462,7 +515,7 @@ void programmodeUI() {
     } else if (programpage == 3 && pauseflag == 0) {
       programpage = 4;
       pauseflag = 1;
-      cycles.clear();
+      cycles.reset();
       cycles.println("DOWN STOP:");
       cycles.print(restdowntime, DEC);
       cycles.println(" Seconds");
@@ -471,7 +524,7 @@ void programmodeUI() {
       programpage = 6;
       pauseflag = 1;
 
-      cycles.clear();
+      cycles.reset();
       cycles.println("CHARGING?:");
       if (chargetoggle == 0) {
         cycles.println("NO");
@@ -483,7 +536,7 @@ void programmodeUI() {
       if (chargetoggle == 0) {
         programpage = 7;
         pauseflag = 1;
-        cycles.clear();
+        cycles.reset();
         cycles.println("REST TIME:");
         cycles.print(cycleresttime, DEC);
         cycles.println(" Minutes");
@@ -491,7 +544,7 @@ void programmodeUI() {
       } else if (chargetoggle == 1) {
         programpage = 5;
         pauseflag = 1;
-        cycles.clear();
+        cycles.reset();
         cycles.println("CHARGE TIME:");
         cycles.print(chargetime, DEC);
         cycles.println(" Minutes");
@@ -513,8 +566,8 @@ void programmodeUI() {
         programpage = 1;
         programcounter = 0;
         uptime = newuptime;
-        cycles.clear();
-        timecounter.clear();
+        cycles.reset();
+        timecounter.reset();
         cycles.println("UP TIME:");
         cycles.print(uptime, DEC);
         cycles.println(" Seconds");
@@ -530,7 +583,7 @@ void programmodeUI() {
         if (uptime <= 0) {
           uptime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("UP TIME:");
         cycles.print(uptime, DEC);
         cycles.println(" Seconds");
@@ -541,7 +594,7 @@ void programmodeUI() {
         if (uptime <= 0) {
           uptime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("UP TIME:");
         cycles.print(uptime, DEC);
         cycles.println(" Seconds");
@@ -557,7 +610,7 @@ void programmodeUI() {
         if (restuptime <= 0) {
           restuptime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("UP STOP TIME:");
         cycles.print(restuptime, DEC);
         cycles.println(" Seconds");
@@ -568,7 +621,7 @@ void programmodeUI() {
         if (restuptime <= 0) {
           restuptime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("UP STOP TIME:");
         cycles.print(restuptime, DEC);
         cycles.println(" Seconds");
@@ -584,7 +637,7 @@ void programmodeUI() {
         if (downtime <= 0) {
           downtime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("DOWN TIME:");
         cycles.print(downtime, DEC);
         cycles.println(" Seconds");
@@ -595,7 +648,7 @@ void programmodeUI() {
         if (downtime <= 0) {
           downtime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("DOWN TIME:");
         cycles.print(downtime, DEC);
         cycles.println(" Seconds");
@@ -611,7 +664,7 @@ void programmodeUI() {
         if (restdowntime <= 0) {
           restdowntime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("DOWN STOP TIME:");
         cycles.print(restdowntime, DEC);
         cycles.println(" Seconds");
@@ -622,7 +675,7 @@ void programmodeUI() {
         if (restdowntime <= 0) {
           restdowntime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("DOWN STOP TIME:");
         cycles.print(restdowntime, DEC);
         cycles.println(" Seconds");
@@ -639,7 +692,7 @@ void programmodeUI() {
         if (chargetime <= 0) {
           chargetime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("CHARGE TIME:");
         cycles.print(chargetime, DEC);
         cycles.println(" Minutes");
@@ -650,7 +703,7 @@ void programmodeUI() {
         if (chargetime <= 0) {
           chargetime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("CHARGE TIME:");
         cycles.print(chargetime, DEC);
         cycles.println(" Minutes");
@@ -662,12 +715,12 @@ void programmodeUI() {
 
       if (checkbuttonstates() == 1) {
         chargetoggle = 1;
-        cycles.clear();
+        cycles.reset();
         cycles.println("CHARGING?:");
         cycles.println("YES");
       } else if (checkbuttonstates() == 2) {
         chargetoggle = 0;
-        cycles.clear();
+        cycles.reset();
         cycles.println("CHARGING?:");
         cycles.println("NO");
       }
@@ -682,7 +735,7 @@ void programmodeUI() {
         if (cycleresttime <= 0) {
           cycleresttime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("REST TIME:");
         cycles.print(cycleresttime, DEC);
         cycles.println(" Minutes");
@@ -693,7 +746,7 @@ void programmodeUI() {
         if (cycleresttime <= 0) {
           cycleresttime = 0;
         }
-        cycles.clear();
+        cycles.reset();
         cycles.println("REST TIME:");
         cycles.print(cycleresttime, DEC);
         cycles.println(" Minutes");
@@ -705,11 +758,52 @@ void programmodeUI() {
 
 }
 
+void currentsenseIN() {
+/* 10 bit ADC
+ *  4.9 mV per unit
+ *  ADC input range of 0 to 5 V
+ *  Ouput voltage of 0 to 1024 (2^10)
+ *  current = AnalogInput(mV) * 4.9 (mV) / 100
+ */
+  volatile static int rawcurrent;
+  volatile static float currentvalue; 
+  volatile static int currentprint;
+  volatile static int currentarray[10];
+  volatile static int count = 0;
+  volatile static int currentsum = 0;
+  volatile static float prev_currentmax = 0;
+  
+  rawcurrent = analogRead(rawinputpin);
+
+  currentvalue = (((rawcurrent*49) / 1000.0)); 
+  currentprint = rawcurrent*49/10;
+
+  currentarray[count] = currentprint;
+  currentsum = currentarray[count] + currentsum;
+
+  count++;
+
+  if (count == 10) {
+    currentavg = (currentsum / (float)count) / 100;
+    if (currentavg > prev_currentavg) {
+      currentmax = currentavg;
+      prev_currentavg = currentavg;
+    }
+    currentsum = 0;
+    count = 0;
+  }
+  
+  
+
+//  Serial.println(currentavg,2);
+}
+
 ISR(TIMER1_COMPA_vect) {
   //timer1 interrupt 1Hz toggles pin 13 (LED)
   //generates pulse wave of frequency 1Hz/2 = 0.5kHz (takes two cycles for full wave- toggle high then toggle low)
   //Serial.println("1 Hz loop");
-
+  volatile static int counter = 0;
+  
   if (liftmode == 1) {
     cycletest();
   }
@@ -720,7 +814,6 @@ ISR(TIMER0_COMPA_vect) {
   //timer0 interrupt 100Hz
 
   controlloop();
-
 
 }
 
