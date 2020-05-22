@@ -52,15 +52,15 @@ volatile static int liftmode = 5;   // 0 = Manual, 1 = Auto (cycle test), 2 = Pr
 volatile static int liftmodenext = 0;
 volatile static int32_t timecount = 0;
 
-volatile static int uptime = 17; // 18
+volatile static int uptime = 13; // 18
 volatile static int newuptime = uptime;
 volatile static int downtime = 8; // 10
 volatile static int newdowntime = downtime;
 volatile static int chargetime = 15; // 15
 volatile static int newchargetime = 60*chargetime;
-volatile static int restuptime = 3; // 3
+volatile static int restuptime = 2; // 3
 volatile static int newrestuptime = restuptime;
-volatile static int restdowntime = 5; // 5
+volatile static int restdowntime = 2; // 5
 volatile static int newrestdowntime = restdowntime;
 volatile static int chargetoggle = 0;
 volatile static int cycleresttime = 10; // 10
@@ -149,7 +149,7 @@ void resetOLEDtextbox() {
 
 void cycletest() {
 
-  volatile static int16_t cyclecount = 1332;
+  volatile static int16_t cyclecount = 2392;
   const int uptime = 2;
   const int downtime = 2;
   const int chargetime = 2;
@@ -432,8 +432,9 @@ void controlloop() {
         loopcounter = 0;
         resetOLEDtextbox();
         modedebounce = 0;
+        mscount = 0;
         manualmodetextbox.println("MANUAL MODE");
-
+        
       } else if (liftmodenext == 2) {
         liftmode = 2;
         loopcounter = 0;
@@ -463,6 +464,12 @@ void programmodeUI() {
   volatile static int intropagetime = 100;
   volatile static int pauseflag = 0;
   volatile static int pausecount = 0;
+  volatile static int firsttimeenter = 1;
+
+  if (firsttimeenter == 1) {
+    resetOLEDtextbox();
+    firsttimeenter = 0;
+  }
 
   if (pauseflag == 1) {
     pausecount++;
@@ -481,9 +488,10 @@ void programmodeUI() {
     uptime = uptime;
     liftmode = 5;
     liftmodenext = 0;
-    cycles.reset();
+    resetOLEDtextbox();
     timecounter.reset();
     programpage = 0;
+    firsttimeenter = 1;
     cycles.println("MANUALMODE");
 
   } else if (checkbuttonstates() == 3) {
@@ -492,62 +500,62 @@ void programmodeUI() {
       pauseflag = 1;
       cycles.reset();
       timecounter.reset();
-      cycles.println("UP TIME:");
-      cycles.print(uptime, DEC);
-      cycles.println(" Seconds");
+      currenttextbox.println("UP TIME:");
+      currenttextbox.print(uptime, DEC);
+      currenttextbox.println(" Seconds");
 
     } else if (programpage == 1 && pauseflag == 0) {
       programpage = 2;
       pauseflag = 1;
-      cycles.reset();
-      cycles.println("UP STOP:");
-      cycles.print(restuptime, DEC);
-      cycles.println(" Seconds");
+      currenttextbox.reset();
+      currenttextbox.println("UP STOP:");
+      currenttextbox.print(restuptime, DEC);
+      currenttextbox.println(" Seconds");
 
     } else if (programpage == 2 && pauseflag == 0) {
       programpage = 3;
       pauseflag = 1;
-      cycles.reset();
-      cycles.println("DOWN TIME:");
-      cycles.print(downtime, DEC);
-      cycles.println(" Seconds");
+      currenttextbox.reset();
+      currenttextbox.println("DOWN TIME:");
+      currenttextbox.print(downtime, DEC);
+      currenttextbox.println(" Seconds");
 
     } else if (programpage == 3 && pauseflag == 0) {
       programpage = 4;
       pauseflag = 1;
-      cycles.reset();
-      cycles.println("DOWN STOP:");
-      cycles.print(restdowntime, DEC);
-      cycles.println(" Seconds");
+      currenttextbox.reset();
+      currenttextbox.println("DOWN STOP:");
+      currenttextbox.print(restdowntime, DEC);
+      currenttextbox.println(" Seconds");
 
     } else if (programpage == 4 && pauseflag == 0) {
       programpage = 6;
       pauseflag = 1;
 
-      cycles.reset();
-      cycles.println("CHARGING?:");
+      currenttextbox.reset();
+      currenttextbox.println("CHARGING?:");
       if (chargetoggle == 0) {
-        cycles.println("NO");
+        currenttextbox.println("NO");
       } else if (chargetoggle == 1) {
-        cycles.print("YES");
+        currenttextbox.print("YES");
       }
       
     } else if (programpage == 6 && pauseflag == 0) {
       if (chargetoggle == 0) {
         programpage = 7;
         pauseflag = 1;
-        cycles.reset();
-        cycles.println("REST TIME:");
-        cycles.print(cycleresttime, DEC);
-        cycles.println(" Minutes");
+        currenttextbox.reset();
+        currenttextbox.println("REST TIME:");
+        currenttextbox.print(cycleresttime, DEC);
+        currenttextbox.println(" Minutes");
         
       } else if (chargetoggle == 1) {
         programpage = 5;
         pauseflag = 1;
-        cycles.reset();
-        cycles.println("CHARGE TIME:");
-        cycles.print(chargetime, DEC);
-        cycles.println(" Minutes");
+        currenttextbox.reset();
+        currenttextbox.println("CHARGE TIME:");
+        currenttextbox.print(chargetime, DEC);
+        currenttextbox.println(" Minutes");
       }
       
     } else if ((programpage == 7 || programpage == 5) && pauseflag == 0) {
@@ -555,6 +563,7 @@ void programmodeUI() {
       liftmode = 5;
       liftmodenext = 0;
       pauseflag = 0;
+      firsttimeenter = 1;
     }
   }
 
@@ -566,11 +575,11 @@ void programmodeUI() {
         programpage = 1;
         programcounter = 0;
         uptime = newuptime;
-        cycles.reset();
+        currenttextbox.reset();
         timecounter.reset();
-        cycles.println("UP TIME:");
-        cycles.print(uptime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.println("UP TIME:");
+        currenttextbox.print(uptime, DEC);
+        currenttextbox.println(" Seconds");
       }
 
       break;
@@ -583,10 +592,10 @@ void programmodeUI() {
         if (uptime <= 0) {
           uptime = 0;
         }
-        cycles.reset();
-        cycles.println("UP TIME:");
-        cycles.print(uptime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("UP TIME:");
+        currenttextbox.print(uptime, DEC);
+        currenttextbox.println(" Seconds");
 
       } else if (checkbuttonstates() == 2) {
         uptime--;
@@ -594,10 +603,10 @@ void programmodeUI() {
         if (uptime <= 0) {
           uptime = 0;
         }
-        cycles.reset();
-        cycles.println("UP TIME:");
-        cycles.print(uptime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("UP TIME:");
+        currenttextbox.print(uptime, DEC);
+        currenttextbox.println(" Seconds");
       }
 
       break;
@@ -610,10 +619,10 @@ void programmodeUI() {
         if (restuptime <= 0) {
           restuptime = 0;
         }
-        cycles.reset();
-        cycles.println("UP STOP TIME:");
-        cycles.print(restuptime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("UP STOP TIME:");
+        currenttextbox.print(restuptime, DEC);
+        currenttextbox.println(" Seconds");
 
       } else if (checkbuttonstates() == 2) {
         restuptime--;
@@ -621,10 +630,10 @@ void programmodeUI() {
         if (restuptime <= 0) {
           restuptime = 0;
         }
-        cycles.reset();
-        cycles.println("UP STOP TIME:");
-        cycles.print(restuptime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("UP STOP TIME:");
+        currenttextbox.print(restuptime, DEC);
+        currenttextbox.println(" Seconds");
       }
 
       break;
@@ -637,10 +646,10 @@ void programmodeUI() {
         if (downtime <= 0) {
           downtime = 0;
         }
-        cycles.reset();
-        cycles.println("DOWN TIME:");
-        cycles.print(downtime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("DOWN TIME:");
+        currenttextbox.print(downtime, DEC);
+        currenttextbox.println(" Seconds");
       
       } else if (checkbuttonstates() == 2) {
         downtime--;
@@ -648,10 +657,10 @@ void programmodeUI() {
         if (downtime <= 0) {
           downtime = 0;
         }
-        cycles.reset();
-        cycles.println("DOWN TIME:");
-        cycles.print(downtime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("DOWN TIME:");
+        currenttextbox.print(downtime, DEC);
+        currenttextbox.println(" Seconds");
       }
 
       break;
@@ -664,10 +673,10 @@ void programmodeUI() {
         if (restdowntime <= 0) {
           restdowntime = 0;
         }
-        cycles.reset();
-        cycles.println("DOWN STOP TIME:");
-        cycles.print(restdowntime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("DOWN STOP TIME:");
+        currenttextbox.print(restdowntime, DEC);
+        currenttextbox.println(" Seconds");
 
       } else if (checkbuttonstates() == 2) {
         restdowntime--;
@@ -675,10 +684,10 @@ void programmodeUI() {
         if (restdowntime <= 0) {
           restdowntime = 0;
         }
-        cycles.reset();
-        cycles.println("DOWN STOP TIME:");
-        cycles.print(restdowntime, DEC);
-        cycles.println(" Seconds");
+        currenttextbox.reset();
+        currenttextbox.println("DOWN STOP TIME:");
+        currenttextbox.print(restdowntime, DEC);
+        currenttextbox.println(" Seconds");
         
       }
 
@@ -692,10 +701,10 @@ void programmodeUI() {
         if (chargetime <= 0) {
           chargetime = 0;
         }
-        cycles.reset();
-        cycles.println("CHARGE TIME:");
-        cycles.print(chargetime, DEC);
-        cycles.println(" Minutes");
+        currenttextbox.reset();
+        currenttextbox.println("CHARGE TIME:");
+        currenttextbox.print(chargetime, DEC);
+        currenttextbox.println(" Minutes");
         
       } else if (checkbuttonstates() == 2) {
         chargetime--;
@@ -703,10 +712,10 @@ void programmodeUI() {
         if (chargetime <= 0) {
           chargetime = 0;
         }
-        cycles.reset();
-        cycles.println("CHARGE TIME:");
-        cycles.print(chargetime, DEC);
-        cycles.println(" Minutes");
+        currenttextbox.reset();
+        currenttextbox.println("CHARGE TIME:");
+        currenttextbox.print(chargetime, DEC);
+        currenttextbox.println(" Minutes");
       }
 
       break;
@@ -715,14 +724,14 @@ void programmodeUI() {
 
       if (checkbuttonstates() == 1) {
         chargetoggle = 1;
-        cycles.reset();
-        cycles.println("CHARGING?:");
-        cycles.println("YES");
+        currenttextbox.reset();
+        currenttextbox.println("CHARGING?:");
+        currenttextbox.println("YES");
       } else if (checkbuttonstates() == 2) {
         chargetoggle = 0;
-        cycles.reset();
-        cycles.println("CHARGING?:");
-        cycles.println("NO");
+        currenttextbox.reset();
+        currenttextbox.println("CHARGING?:");
+        currenttextbox.println("NO");
       }
 
       break;
@@ -735,10 +744,10 @@ void programmodeUI() {
         if (cycleresttime <= 0) {
           cycleresttime = 0;
         }
-        cycles.reset();
-        cycles.println("REST TIME:");
-        cycles.print(cycleresttime, DEC);
-        cycles.println(" Minutes");
+        currenttextbox.reset();
+        currenttextbox.println("REST TIME:");
+        currenttextbox.print(cycleresttime, DEC);
+        currenttextbox.println(" Minutes");
 
       } else if (checkbuttonstates() == 2) {
         cycleresttime--;
@@ -746,10 +755,10 @@ void programmodeUI() {
         if (cycleresttime <= 0) {
           cycleresttime = 0;
         }
-        cycles.reset();
-        cycles.println("REST TIME:");
-        cycles.print(cycleresttime, DEC);
-        cycles.println(" Minutes");
+        currenttextbox.reset();
+        currenttextbox.println("REST TIME:");
+        currenttextbox.print(cycleresttime, DEC);
+        currenttextbox.println(" Minutes");
       }
 
       break;
