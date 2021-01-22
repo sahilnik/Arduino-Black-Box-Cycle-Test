@@ -52,18 +52,18 @@ volatile static int liftmode = 5;   // 0 = Manual, 1 = Auto (cycle test), 2 = Pr
 volatile static int liftmodenext = 0;
 volatile static int32_t timecount = 0;
 
-volatile static int uptime = 13; // 18
+volatile static int uptime = 9; // 18
 volatile static int newuptime = uptime;
-volatile static int downtime = 8; // 10
+volatile static int downtime = 7; // 10
 volatile static int newdowntime = downtime;
 volatile static int chargetime = 15; // 15
 volatile static int newchargetime = 60*chargetime;
-volatile static int restuptime = 2; // 3
+volatile static int restuptime = 1; // 3
 volatile static int newrestuptime = restuptime;
-volatile static int restdowntime = 2; // 5
+volatile static int restdowntime = 1; // 5
 volatile static int newrestdowntime = restdowntime;
 volatile static int chargetoggle = 0;
-volatile static int cycleresttime = 10; // 10
+volatile static float cycleresttime = 0.5; // 10 mins
 volatile static int newcycleresttime = 60*cycleresttime;
 
 volatile static int modedebounce = 0;
@@ -74,7 +74,6 @@ volatile static int programcounter = 0;
 volatile static float currentavg = 0;
 volatile static float currentmax = 0;
 volatile static float prev_currentavg = 0;
-
 volatile static int seccount = 0;
 
 void setup() {
@@ -149,7 +148,7 @@ void resetOLEDtextbox() {
 
 void cycletest() {
 
-  volatile static int16_t cyclecount = 2392;
+  volatile static int16_t cyclecount = 745;
   const int uptime = 2;
   const int downtime = 2;
   const int chargetime = 2;
@@ -546,7 +545,7 @@ void programmodeUI() {
         pauseflag = 1;
         currenttextbox.reset();
         currenttextbox.println("REST TIME:");
-        currenttextbox.print(cycleresttime, DEC);
+        currenttextbox.print(cycleresttime, 1);
         currenttextbox.println(" Minutes");
         
       } else if (chargetoggle == 1) {
@@ -739,25 +738,25 @@ void programmodeUI() {
     case 7:
 
       if (checkbuttonstates() == 1) {
-        cycleresttime++;
+        cycleresttime = cycleresttime + 0.5;
         newcycleresttime = 60*cycleresttime;
         if (cycleresttime <= 0) {
           cycleresttime = 0;
         }
         currenttextbox.reset();
         currenttextbox.println("REST TIME:");
-        currenttextbox.print(cycleresttime, DEC);
+        currenttextbox.print(cycleresttime, 1);
         currenttextbox.println(" Minutes");
 
       } else if (checkbuttonstates() == 2) {
-        cycleresttime--;
+        cycleresttime = cycleresttime - 0.5;
         newcycleresttime = 60*cycleresttime;
         if (cycleresttime <= 0) {
           cycleresttime = 0;
         }
         currenttextbox.reset();
         currenttextbox.println("REST TIME:");
-        currenttextbox.print(cycleresttime, DEC);
+        currenttextbox.print(cycleresttime, 1);
         currenttextbox.println(" Minutes");
       }
 
